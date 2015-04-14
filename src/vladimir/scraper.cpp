@@ -87,6 +87,15 @@ void scraper::process_products(category const& c)
 				p.discount_amount = j["mixMatchItemQuantity"].asInt();
 				p.price = j["mixMatchDiscount"].asFloat()*100.0 / p.discount_amount;
 			}
+			else if(type == "PERCENT")
+			{
+				p.discount_amount = j["mixMatchItemQuantity"].asInt();
+				p.price *= j["mixMatchDiscount"].asFloat()/100.0;
+			}
+			else if(type == "" && j["mixMatchDiscount"].isInt() && j["mixMatchDiscount"].asInt() == 100)
+			{
+				// Not actually a discount, bug in Coop's system
+			}
 			else
 			{
 				std::cerr << '[' << p.identifier << "] " << p.name << std::endl;
