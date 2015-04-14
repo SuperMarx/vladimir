@@ -47,21 +47,6 @@ void scraper::get_submenu(category const& c, cat_callback_t const& f)
 	}
 }
 
-condition to_condition(unsigned int n)
-{
-	switch(n)
-	{
-	case 1:
-		return condition::ALWAYS;
-	case 2:
-		return condition::AT_TWO;
-	case 3:
-		return condition::AT_THREE;
-	default:
-		throw std::runtime_error("Could not parse condition");
-	}
-}
-
 void scraper::process_products(category const& c)
 {
 	std::cerr << "Fetching products for " << c.name << " [" << c.id << ']' << std::endl;
@@ -82,7 +67,7 @@ void scraper::process_products(category const& c)
 		boost::algorithm::to_lower(p.name, std::locale("en_US.utf8")); // TODO fix UTF8-handling with ICU or similar.
 
 		p.valid_on = retrieved_on;
-		p.discount_condition = condition::ALWAYS;
+		p.discount_amount = 1;
 
 		p.price = j["salePrice"].asFloat()*100.0;
 		if(!j["originalPrice"].isNull())
@@ -99,9 +84,8 @@ void scraper::process_products(category const& c)
 			}
 			else if(type == "QUANTITY_FIXED_PRICE")
 			{
-				unsigned int quantity = j["mixMatchItemQuantity"].asInt();
-				p.price = j["mixMatchDiscount"].asFloat()*100.0 / quantity;
-				p.discount_condition = to_condition(quantity);
+				p.discount_amount = j["mixMatchItemQuantity"].asInt();
+				p.price = j["mixMatchDiscount"].asFloat()*100.0 / p.discount_amount;
 			}
 			else
 			{
