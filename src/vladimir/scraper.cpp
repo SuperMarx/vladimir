@@ -2,6 +2,7 @@
 
 #include <queue>
 #include <jsoncpp/json/json.h>
+#include <boost/algorithm/string.hpp>
 
 namespace supermarx
 {
@@ -76,6 +77,10 @@ void scraper::process_products(category const& c)
 
 		p.identifier = j["articleNumber"].asString();
 		p.name = j["brand"]["name"].asString() + " " + j["name"].asString();
+
+		// Coop gives names as uppercase strings, which is undesireable.
+		boost::algorithm::to_lower(p.name, std::locale("en_US.utf8")); // TODO fix UTF8-handling with ICU or similar.
+
 		p.valid_on = retrieved_on;
 		p.discount_condition = condition::ALWAYS;
 
