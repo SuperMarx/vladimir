@@ -75,7 +75,13 @@ int main(int argc, char** argv)
 
 	supermarx::api::client api(opt.api_host, "vladimir (libsupermarx-api)");
 
+	std::set<std::string> identifiers;
 	supermarx::scraper s([&](supermarx::product const& product, supermarx::datetime retrieved_on, supermarx::confidence c) {
+		if(identifiers.find(product.identifier) != identifiers.end())
+			return; // Do not commit previously seen products
+
+		identifiers.emplace(product.identifier);
+
 		std::cerr << "Product '" << product.name << "' [" << product.identifier << "] ";
 
 		if(product.price == product.orig_price)
