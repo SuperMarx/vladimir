@@ -75,7 +75,7 @@ int main(int argc, char** argv)
 
 	supermarx::api::client api(opt.api_host, "vladimir (libsupermarx-api)");
 
-	/*supermarx::scraper s([&](supermarx::product const& product, supermarx::datetime retrieved_on, supermarx::confidence c) {
+	supermarx::scraper s([&](supermarx::product const& product, supermarx::datetime retrieved_on, supermarx::confidence c) {
 		std::cerr << "Product '" << product.name << "' [" << product.identifier << "] ";
 
 		if(product.price == product.orig_price)
@@ -95,11 +95,11 @@ int main(int argc, char** argv)
 			break;
 		}
 
-		std::cout << std::endl;
-		api.add_product(product, 1, retrieved_on, c);
-	}, opt.ratelimit);*/
+		std::cerr << std::endl;
+		api.add_product(product, 2, retrieved_on, c);
+	}, opt.ratelimit);
 
-	//s.scrape();
+	s.scrape();
 
 	return EXIT_SUCCESS;
 }

@@ -12,9 +12,22 @@ namespace supermarx
 	public:
 		using callback_t = std::function<void(const product&, datetime, confidence)>;
 
+		struct category
+		{
+			uint64_t id;
+			std::string name;
+			bool has_children;
+		};
+
+		using cat_callback_t = std::function<void(category const&)>;
+
 	private:
 		callback_t callback;
 		downloader dl;
+
+		void get_rootmenu(cat_callback_t const& f);
+		void get_submenu(category const& c, cat_callback_t const& f);
+		void process_products(category const& c);
 
 	public:
 		scraper(callback_t _callback, unsigned int ratelimit = 5000);
