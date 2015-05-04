@@ -61,7 +61,12 @@ void scraper::process_products(category const& c)
 		datetime retrieved_on = datetime_now();
 
 		p.identifier = j["articleNumber"].asString();
-		p.name = j["brand"]["name"].asString() + " " + j["name"].asString();
+
+		std::string brand = j["brand"]["name"].asString();
+		if(brand == "-------")
+			brand = "coop";
+
+		p.name = brand + " " + j["name"].asString();
 
 		// Coop gives names as uppercase strings, which is undesireable.
 		boost::algorithm::to_lower(p.name, std::locale("en_US.utf8")); // TODO fix UTF8-handling with ICU or similar.
@@ -92,6 +97,11 @@ void scraper::process_products(category const& c)
 				p.discount_amount = j["mixMatchItemQuantity"].asInt();
 				p.price *= j["mixMatchDiscount"].asFloat()/100.0;
 			}
+			else if(type == "TWO_BUY_ONE_PAY")
+			{
+				p.discount_amount = j["mixMatchItemQuantity"].asInt();
+				p.price *= j["mixMatchDiscount"].asFloat()/100.0;
+			}
 			else if(type == "" && j["mixMatchDiscount"].isInt() && j["mixMatchDiscount"].asInt() == 100)
 			{
 				// Not actually a discount, bug in Coop's system
@@ -102,6 +112,61 @@ void scraper::process_products(category const& c)
 				std::cerr << "mixMatchButtonType: \'" << type << '\'' << std::endl;
 				conf = confidence::LOW;
 			}
+		}
+
+		const static std::map<std::string, std::pair<uint64_t, measure>> measure_map({
+			{"DOZIJN", {12, measure::UNITS}},
+			{"GROS", {144, measure::UNITS}},
+			{"MILIGRAM", {1, measure::MILLIGRAMS}},
+			{"GRAM", {1000, measure::MILLIGRAMS}},
+			{"HECTOGRM", {100000, measure::MILLIGRAMS}},
+			{"KILOGRAM", {1000000, measure::MILLIGRAMS}},
+			{"TON", {1000000000, measure::MILLIGRAMS}},
+			{"POND", {500000, measure::MILLIGRAMS}},
+			{"ONS", {100000, measure::MILLIGRAMS}},
+			{"MILIMETR", {1, measure::MILLIMETERS}},
+			{"CENTIMTR", {10, measure::MILLIMETERS}},
+			{"DECIMETR", {100, measure::MILLIMETERS}},
+			{"METER", {1000, measure::MILLIMETERS}},
+			{"KILOMETR", {1000000, measure::MILLIMETERS}},
+			{"MILILITR", {1, measure::MILLILITERS}},
+			{"CENTILTR", {10, measure::MILLILITERS}},
+			{"DECILITR", {100, measure::MILLILITERS}},
+			{"LITER", {1000, measure::MILLILITERS}},
+			{"DECALITR", {10000, measure::MILLILITERS}},
+			{"HECTOLTR", {100000, measure::MILLILITERS}},
+			{"STUK", {1, measure::UNITS}},
+			{"Diversen", {1, measure::UNITS}},
+			{"PLAK", {1, measure::UNITS}},
+			{"PUNT(EN)", {1, measure::UNITS}},
+			{"ROL(LEN)", {1, measure::UNITS}}
+		});
+
+		p.volume = 1;
+		p.volume_measure = measure::UNITS;
+
+		std::string volume_str = j["volume"].asString();
+		std::string measure_str = j["volumeMeasure"]["name"].asString();
+
+		auto measure_it = measure_map.find(measure_str);
+		if(measure_it != measure_map.end())
+		{
+			try
+			{
+				p.volume = boost::lexical_cast<uint64_t>(volume_str) * measure_it->second.first;
+				p.volume_measure = measure_it->second.second;
+			} catch(boost::bad_lexical_cast e)
+			{
+				std::cerr << '[' << p.identifier << "] " << p.name << std::endl;
+				std::cerr << "volume: \'" << volume_str << '\'' << std::endl;
+				conf = confidence::LOW;
+			}
+		}
+		else
+		{
+			std::cerr << '[' << p.identifier << "] " << p.name << std::endl;
+			std::cerr << "volumeMeasure: \'" << measure_str << '\'' << std::endl;
+			conf = confidence::LOW;
 		}
 
 		callback(p, retrieved_on, conf);
