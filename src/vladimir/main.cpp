@@ -10,7 +10,9 @@
 struct cli_options
 {
 	std::string api_host;
+	bool dry_run;
 	unsigned int ratelimit;
+	bool silent;
 };
 
 int read_options(cli_options& opt, int argc, char** argv)
@@ -19,7 +21,9 @@ int read_options(cli_options& opt, int argc, char** argv)
 	o_general.add_options()
 			("help,h", "display this message")
 			("api,a", boost::program_options::value(&opt.api_host), "api host to send results to")
-			("ratelimit,r", boost::program_options::value(&opt.ratelimit), "minimal time between each request in milliseconds (default: 5000)");
+			("dry-run,d", "does not send products to api when set")
+			("ratelimit,r", boost::program_options::value(&opt.ratelimit), "minimal time between each request in milliseconds (default: 5000)")
+			("silent,s", "do not write status reports to cerr");
 
 	boost::program_options::variables_map vm;
 	boost::program_options::positional_options_description pos;
@@ -59,8 +63,12 @@ int read_options(cli_options& opt, int argc, char** argv)
 	if(!vm.count("api"))
 		opt.api_host = "https://api.supermarx.nl";
 
+	opt.dry_run = vm.count("dry-run");
+
 	if(!vm.count("ratelimit"))
 		opt.ratelimit = 5000;
+
+	opt.silent = vm.count("silent");
 
 	return EXIT_SUCCESS;
 }
@@ -82,18 +90,23 @@ int main(int argc, char** argv)
 
 		identifiers.emplace(product.identifier);
 
-		std::cerr << "Product '" << product.name << "' [" << product.identifier << "] ";
+		if(!opt.silent)
+		{
+			std::cerr << "Product '" << product.name << "' [" << product.identifier << "] ";
 
-		if(product.price == product.orig_price)
-			std::cerr << product.price/100.0f << " EUR";
-		else
-			std::cerr << product.orig_price/100.0f << " EUR -> " << product.price/100.0f << " EUR";
+			if(product.price == product.orig_price)
+				std::cerr << product.price/100.0f << " EUR";
+			else
+				std::cerr << product.orig_price/100.0f << " EUR -> " << product.price/100.0f << " EUR";
 
-		if(product.discount_amount > 1)
-			std::cerr << " (at " << product.discount_amount << ')';
+			if(product.discount_amount > 1)
+				std::cerr << " (at " << product.discount_amount << ')';
 
-		std::cerr << std::endl;
-		api.add_product(product, 2, retrieved_on, c, problems);
+			std::cerr << std::endl;
+		}
+
+		if(!opt.dry_run)
+			api.add_product(product, 2, retrieved_on, c, problems);
 	}, opt.ratelimit);
 
 	s.scrape();
