@@ -4,6 +4,8 @@
 #include <jsoncpp/json/json.h>
 #include <boost/algorithm/string.hpp>
 
+#include <supermarx/util/stubborn.hpp>
+
 namespace supermarx
 {
 
@@ -25,7 +27,11 @@ scraper::scraper(callback_t _callback, unsigned int _ratelimit)
 
 void scraper::get_rootmenu(cat_callback_t const& f)
 {
-	Json::Value root(parse_json(dl.fetch("https://api-01.cooponline.nl/shopapi/webshopCategory/getMenu")));
+	Json::Value root(parse_json(
+		stubborn::attempt<std::string>([&]{
+			return dl.fetch("https://api-01.cooponline.nl/shopapi/webshopCategory/getMenu");
+		})
+	));
 
 	for(auto const& cat : root["rootWebshopCategories"])
 	{
@@ -39,7 +45,12 @@ void scraper::get_submenu(category const& c, cat_callback_t const& f)
 	std::string uri("https://api-01.cooponline.nl/shopapi/webshopCategory/getMenu?categoryId=");
 	uri += boost::lexical_cast<std::string>(c.id);
 
-	Json::Value root(parse_json(dl.fetch(uri)));
+	Json::Value root(parse_json(
+		stubborn::attempt<std::string>([&]{
+			return dl.fetch(uri);
+		})
+	));
+
 	for(auto const& cat : root["childrenWebshopCategories"])
 	{
 		category c({cat["id"].asUInt64(), cat["name"].asString(), cat["hasChildren"].asBool()});
@@ -62,7 +73,12 @@ void scraper::process_products(category const& c)
 	std::string uri("https://api-01.cooponline.nl/shopapi/article/list?offset=0&size=10000&webshopCategoryId=");
 	uri += boost::lexical_cast<std::string>(c.id);
 
-	Json::Value root(parse_json(dl.fetch(uri)));
+	Json::Value root(parse_json(
+		stubborn::attempt<std::string>([&]{
+			return dl.fetch(uri);
+		})
+	));
+
 	for(auto const& j : root["articles"])
 	{
 		product p;
