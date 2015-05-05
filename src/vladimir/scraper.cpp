@@ -47,9 +47,18 @@ void scraper::get_submenu(category const& c, cat_callback_t const& f)
 	}
 }
 
+void report_problem_understanding(std::string const& field, std::string const& value, scraper::problems_t& problems)
+{
+	std::stringstream sstr;
+	sstr << "Unclear '" << field << "'' with value '" << value << "'";
+
+	problems.emplace_back(sstr.str());
+}
+
 void scraper::process_products(category const& c)
 {
-	std::cerr << "Fetching products for " << c.name << " [" << c.id << ']' << std::endl;
+	std::vector<std::string> problems;
+
 	std::string uri("https://api-01.cooponline.nl/shopapi/article/list?offset=0&size=10000&webshopCategoryId=");
 	uri += boost::lexical_cast<std::string>(c.id);
 
@@ -108,8 +117,7 @@ void scraper::process_products(category const& c)
 			}
 			else
 			{
-				std::cerr << '[' << p.identifier << "] " << p.name << std::endl;
-				std::cerr << "mixMatchButtonType: \'" << type << '\'' << std::endl;
+				report_problem_understanding("mixMatchButtonType", type, problems);
 				conf = confidence::LOW;
 			}
 		}
@@ -157,19 +165,17 @@ void scraper::process_products(category const& c)
 				p.volume_measure = measure_it->second.second;
 			} catch(boost::bad_lexical_cast e)
 			{
-				std::cerr << '[' << p.identifier << "] " << p.name << std::endl;
-				std::cerr << "volume: \'" << volume_str << '\'' << std::endl;
+				report_problem_understanding("volume", volume_str, problems);
 				conf = confidence::LOW;
 			}
 		}
 		else
 		{
-			std::cerr << '[' << p.identifier << "] " << p.name << std::endl;
-			std::cerr << "volumeMeasure: \'" << measure_str << '\'' << std::endl;
+			report_problem_understanding("volumeMeasure", volume_str, problems);
 			conf = confidence::LOW;
 		}
 
-		callback(p, retrieved_on, conf);
+		callback(p, retrieved_on, conf, problems);
 	}
 }
 
@@ -178,7 +184,6 @@ void scraper::scrape()
 	std::vector<category> todo;
 
 	cat_callback_t cat_f = [&](category const& c) {
-		std::cerr << "Retrieving categories for " << c.name << " [" << c.id << ']' << std::endl;
 		todo.push_back(c);
 
 		if(c.has_children)
