@@ -201,9 +201,6 @@ void scraper::scrape()
 
 	cat_callback_t cat_f = [&](category const& c) {
 		todo.push_back(c);
-
-		if(c.has_children)
-			get_submenu(c, cat_f);
 	};
 
 	get_rootmenu(cat_f);
@@ -212,6 +209,9 @@ void scraper::scrape()
 	{
 		category c(todo.back());
 		todo.pop_back();
+
+		if(c.has_children)
+			get_submenu(c, cat_f);
 
 		process_products(c);
 	}
