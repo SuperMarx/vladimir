@@ -191,7 +191,11 @@ void scraper::process_products(category const& c)
 			conf = confidence::LOW;
 		}
 
-		callback(p, retrieved_on, conf, problems);
+		boost::optional<std::string> image_uri;
+		if(j["imageId"].isInt())
+			image_uri = "https://api-01.cooponline.nl/shopapi/image/A/N/" + boost::lexical_cast<std::string>(j["imageId"].asUInt());
+
+		callback(uri, image_uri, p, retrieved_on, conf, problems);
 	}
 }
 
@@ -215,6 +219,12 @@ void scraper::scrape()
 
 		process_products(c);
 	}
+}
+
+raw scraper::download_image(const std::string& uri)
+{
+	std::string buf(dl.fetch(uri));
+	return raw(buf.data(), buf.length());
 }
 
 }
