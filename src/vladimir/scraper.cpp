@@ -20,9 +20,9 @@ Json::Value parse_json(std::string const& src)
 	return root;
 }
 
-scraper::scraper(callback_t _callback, unsigned int _ratelimit)
+scraper::scraper(callback_t _callback, unsigned int _ratelimit, bool _cache)
 	: callback(_callback)
-	, dl("supermarx vladimir/0.1", _ratelimit)
+	, dl("supermarx vladimir/0.1", _ratelimit, _cache ? boost::optional<std::string>("./cache") : boost::none)
 {}
 
 void scraper::get_rootmenu(cat_callback_t const& f)

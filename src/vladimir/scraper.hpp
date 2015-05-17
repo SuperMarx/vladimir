@@ -4,7 +4,7 @@
 
 #include <supermarx/product.hpp>
 #include <supermarx/raw.hpp>
-#include <supermarx/util/downloader.hpp>
+#include <supermarx/util/cached_downloader.hpp>
 
 namespace supermarx
 {
@@ -25,14 +25,14 @@ namespace supermarx
 
 	private:
 		callback_t callback;
-		downloader dl;
+		cached_downloader dl;
 
 		void get_rootmenu(cat_callback_t const& f);
 		void get_submenu(category const& c, cat_callback_t const& f);
 		void process_products(category const& c);
 
 	public:
-		scraper(callback_t _callback, unsigned int ratelimit = 5000);
+		scraper(callback_t _callback, unsigned int ratelimit = 5000, bool cache = false);
 		scraper(scraper&) = delete;
 		void operator=(scraper&) = delete;
 
