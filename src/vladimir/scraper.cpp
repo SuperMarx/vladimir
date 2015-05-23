@@ -40,10 +40,10 @@ void scraper::get_rootmenu(cat_callback_t const& f)
 	}
 }
 
-void scraper::get_submenu(category const& c, cat_callback_t const& f)
+void scraper::get_submenu(category const& c_parent, cat_callback_t const& f)
 {
 	std::string uri("https://api-01.cooponline.nl/shopapi/webshopCategory/getMenu?categoryId=");
-	uri += boost::lexical_cast<std::string>(c.id);
+	uri += boost::lexical_cast<std::string>(c_parent.id);
 
 	Json::Value root(parse_json(
 		stubborn::attempt<std::string>([&]{
