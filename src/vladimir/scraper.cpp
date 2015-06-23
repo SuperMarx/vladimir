@@ -81,7 +81,7 @@ void scraper::process_products(category const& c)
 
 	for(auto const& j : root["articles"])
 	{
-		product p;
+		message::product_base p;
 		confidence conf = confidence::NEUTRAL;
 		datetime retrieved_on = datetime_now();
 
