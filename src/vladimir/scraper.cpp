@@ -29,7 +29,7 @@ void scraper::get_rootmenu(cat_callback_t const& f)
 {
 	Json::Value root(parse_json(
 		stubborn::attempt<std::string>([&]{
-			return dl.fetch("https://api-01.cooponline.nl/shopapi/webshopCategory/getMenu");
+			return dl.fetch("https://api-01.cooponline.nl/shopapi/webshopCategory/getMenu").body;
 		})
 	));
 
@@ -47,7 +47,7 @@ void scraper::get_submenu(category const& c_parent, cat_callback_t const& f)
 
 	Json::Value root(parse_json(
 		stubborn::attempt<std::string>([&]{
-			return dl.fetch(uri);
+			return dl.fetch(uri).body;
 		})
 	));
 
@@ -75,7 +75,7 @@ void scraper::process_products(category const& c)
 
 	Json::Value root(parse_json(
 		stubborn::attempt<std::string>([&]{
-			return dl.fetch(uri);
+			return dl.fetch(uri).body;
 		})
 	));
 
@@ -223,7 +223,7 @@ void scraper::scrape()
 
 raw scraper::download_image(const std::string& uri)
 {
-	std::string buf(dl.fetch(uri));
+	std::string buf(dl.fetch(uri).body);
 	return raw(buf.data(), buf.length());
 }
 
