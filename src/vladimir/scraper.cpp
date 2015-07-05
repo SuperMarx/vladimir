@@ -20,7 +20,7 @@ Json::Value parse_json(std::string const& src)
 	return root;
 }
 
-scraper::scraper(callback_t _callback, unsigned int _ratelimit, bool _cache)
+scraper::scraper(callback_t _callback, unsigned int _ratelimit, bool _cache, bool)
 	: callback(_callback)
 	, dl("supermarx vladimir/0.1", _ratelimit, _cache ? boost::optional<std::string>("./cache") : boost::none)
 {}
@@ -195,7 +195,7 @@ void scraper::process_products(category const& c)
 		if(j["imageId"].isInt())
 			image_uri = "https://api-01.cooponline.nl/shopapi/image/A/N/" + boost::lexical_cast<std::string>(j["imageId"].asUInt());
 
-		callback(uri, image_uri, p, retrieved_on, conf, problems);
+		callback(uri, image_uri, p, {}, retrieved_on, conf, problems);
 	}
 }
 
