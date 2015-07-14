@@ -61,15 +61,13 @@ void scraper::get_submenu(category const& c_parent, cat_callback_t const& f)
 void report_problem_understanding(std::string const& field, std::string const& value, scraper::problems_t& problems)
 {
 	std::stringstream sstr;
-	sstr << "Unclear '" << field << "'' with value '" << value << "'";
+	sstr << "Unclear '" << field << "' with value '" << value << "'";
 
 	problems.emplace_back(sstr.str());
 }
 
 void scraper::process_products(category const& c)
 {
-	std::vector<std::string> problems;
-
 	std::string uri("https://api-01.cooponline.nl/shopapi/article/list?offset=0&size=10000&webshopCategoryId=");
 	uri += boost::lexical_cast<std::string>(c.id);
 
@@ -81,6 +79,8 @@ void scraper::process_products(category const& c)
 
 	for(auto const& j : root["articles"])
 	{
+		std::vector<std::string> problems;
+
 		message::product_base p;
 		confidence conf = confidence::NEUTRAL;
 		datetime retrieved_on = datetime_now();
