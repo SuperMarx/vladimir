@@ -80,6 +80,9 @@ void scraper::process_products(category const& c)
 	for(auto const& j : root["articles"])
 	{
 		std::vector<std::string> problems;
+		std::vector<message::tag> tags;
+
+		tags.push_back({c.name, std::string("category")});
 
 		message::product_base p;
 		confidence conf = confidence::NEUTRAL;
@@ -91,10 +94,13 @@ void scraper::process_products(category const& c)
 		if(brand == "-------")
 			brand = "coop";
 
-		p.name = brand + " " + j["name"].asString();
+		p.name = j["name"].asString();
 
 		// Coop gives names as uppercase strings, which is undesireable.
-		boost::algorithm::to_lower(p.name, std::locale("en_US.utf8")); // TODO fix UTF8-handling with ICU or similar.
+		boost::algorithm::to_lower(brand, std::locale("en_US.utf8")); // TODO fix UTF8-handling with ICU or similar.
+		boost::algorithm::to_lower(p.name, std::locale("en_US.utf8"));
+
+		tags.push_back({brand, std::string("brand")});
 
 		p.valid_on = retrieved_on;
 		p.discount_amount = 1;
@@ -195,7 +201,7 @@ void scraper::process_products(category const& c)
 		if(j["imageId"].isInt())
 			image_uri = "https://api-01.cooponline.nl/shopapi/image/A/N/" + boost::lexical_cast<std::string>(j["imageId"].asUInt());
 
-		callback(uri, image_uri, p, {}, retrieved_on, conf, problems);
+		callback(uri, image_uri, p, tags, retrieved_on, conf, problems);
 	}
 }
 
