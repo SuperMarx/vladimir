@@ -20,8 +20,8 @@ Json::Value parse_json(std::string const& src)
 	return root;
 }
 
-scraper::scraper(callback_t _callback, unsigned int _ratelimit, bool _cache, bool)
-	: callback(_callback)
+scraper::scraper(product_callback_t _product_callback, tag_hierarchy_callback_t, unsigned int _ratelimit, bool _cache, bool)
+	: product_callback(_product_callback)
 	, dl("supermarx vladimir/0.1", _ratelimit, _cache ? boost::optional<std::string>("./cache") : boost::none)
 {}
 
@@ -80,13 +80,12 @@ void scraper::process_products(category const& c)
 	for(auto const& j : root["articles"])
 	{
 		std::vector<std::string> problems;
-		std::vector<message::tag> tags;
-
-		tags.push_back({c.name, std::string("category")});
 
 		message::product_base p;
 		confidence conf = confidence::NEUTRAL;
 		datetime retrieved_on = datetime_now();
+
+		p.tags.push_back({c.name, std::string("category")});
 
 		p.identifier = j["articleNumber"].asString();
 
@@ -100,7 +99,7 @@ void scraper::process_products(category const& c)
 		boost::algorithm::to_lower(brand, std::locale("en_US.utf8")); // TODO fix UTF8-handling with ICU or similar.
 		boost::algorithm::to_lower(p.name, std::locale("en_US.utf8"));
 
-		tags.push_back({brand, std::string("brand")});
+		p.tags.push_back({brand, std::string("brand")});
 
 		p.valid_on = retrieved_on;
 		p.discount_amount = 1;
@@ -201,7 +200,7 @@ void scraper::process_products(category const& c)
 		if(j["imageId"].isInt())
 			image_uri = "https://api-01.cooponline.nl/shopapi/image/A/N/" + boost::lexical_cast<std::string>(j["imageId"].asUInt());
 
-		callback(uri, image_uri, p, tags, retrieved_on, conf, problems);
+		product_callback(uri, image_uri, p, retrieved_on, conf, problems);
 	}
 }
 

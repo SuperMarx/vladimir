@@ -1,20 +1,18 @@
 #pragma once
 
-#include <functional>
-
-#include <supermarx/message/product_base.hpp>
-#include <supermarx/message/tag.hpp>
-
 #include <supermarx/raw.hpp>
 #include <supermarx/util/cached_downloader.hpp>
+
+#include <supermarx/scraper/scraper_prototype.hpp>
 
 namespace supermarx
 {
 	class scraper
 	{
 	public:
-		using problems_t = std::vector<std::string>;
-		using callback_t = std::function<void(std::string const&, boost::optional<std::string> const&, const message::product_base&, std::vector<message::tag> const&, datetime, confidence, problems_t)>;
+		using problems_t = scraper_prototype::problems_t;
+		using product_callback_t = scraper_prototype::product_callback_t;
+		using tag_hierarchy_callback_t = scraper_prototype::tag_hierarchy_callback_t;
 
 		struct category
 		{
@@ -26,7 +24,7 @@ namespace supermarx
 		using cat_callback_t = std::function<void(category const&)>;
 
 	private:
-		callback_t callback;
+		product_callback_t product_callback;
 		cached_downloader dl;
 
 		void get_rootmenu(cat_callback_t const& f);
@@ -34,7 +32,7 @@ namespace supermarx
 		void process_products(category const& c);
 
 	public:
-		scraper(callback_t _callback, unsigned int ratelimit = 5000, bool cache = false, bool register_tags = false);
+		scraper(product_callback_t _product_callback, tag_hierarchy_callback_t _tag_hierarchy_callback, unsigned int ratelimit = 5000, bool cache = false, bool register_tags = false);
 		scraper(scraper&) = delete;
 		void operator=(scraper&) = delete;
 
