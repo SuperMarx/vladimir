@@ -2,6 +2,7 @@
 
 #include <supermarx/raw.hpp>
 #include <supermarx/util/cached_downloader.hpp>
+#include <supermarx/util/download_manager.hpp>
 
 #include <supermarx/scraper/scraper_prototype.hpp>
 
@@ -21,14 +22,15 @@ namespace supermarx
 			bool has_children;
 		};
 
-		using cat_callback_t = std::function<void(category const&)>;
-
 	private:
 		product_callback_t product_callback;
 		cached_downloader dl;
+		download_manager m;
 
-		void get_rootmenu(cat_callback_t const& f);
-		void get_submenu(category const& c, cat_callback_t const& f);
+		size_t product_count, page_count, error_count;
+
+		void schedule_submenu(category const& c);
+		void process_category(category const& c);
 		void process_products(category const& c);
 
 	public:
