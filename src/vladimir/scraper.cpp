@@ -3,11 +3,23 @@
 #include <queue>
 #include <jsoncpp/json/json.h>
 #include <boost/algorithm/string.hpp>
+#include <boost/regex.hpp>
 
 #include <supermarx/util/stubborn.hpp>
 
+#include <vladimir/parsers/category_parser.hpp>
+
 namespace supermarx
 {
+
+scraper::scraper(product_callback_t _product_callback, tag_hierarchy_callback_t, unsigned int _ratelimit, bool _cache, bool)
+	: product_callback(_product_callback)
+	, dl("supermarx vladimir/0.2", _ratelimit, _cache ? boost::optional<std::string>("./cache") : boost::none)
+	, m(dl, [&]() { error_count++; })
+	, product_count(0)
+	, page_count(0)
+	, error_count(0)
+{}
 
 Json::Value parse_json(std::string const& src)
 {
@@ -20,29 +32,19 @@ Json::Value parse_json(std::string const& src)
 	return root;
 }
 
-scraper::scraper(product_callback_t _product_callback, tag_hierarchy_callback_t, unsigned int _ratelimit, bool _cache, bool)
-	: product_callback(_product_callback)
-	, dl("supermarx vladimir/0.1", _ratelimit, _cache ? boost::optional<std::string>("./cache") : boost::none)
-	, m(dl, [&]() { error_count++; })
-	, product_count(0)
-	, page_count(0)
-	, error_count(0)
-{}
-
 void scraper::schedule_submenu(category const& c_parent)
 {
-	std::string uri("https://api-01.cooponline.nl/shopapi/webshopCategory/getMenu?categoryId=");
-	uri += boost::lexical_cast<std::string>(c_parent.id);
-
-	m.schedule(uri, [=](downloader::response const& response) {
+	m.schedule(c_parent.url, [=](downloader::response const& response) {
 		page_count++;
 
-		Json::Value root(parse_json(response.body));
-		for(auto const& cat : root["childrenWebshopCategories"])
-		{
-			category c({cat["id"].asUInt64(), cat["name"].asString(), cat["hasChildren"].asBool()});
-			process_category(c);
-		}
+		category_parser cp([&](category const& /*c*/) {
+			// Do not execute schedule_submenu(c);
+			// All products are yielded on this level
+		}, [&](size_t id) {
+			process_products(c_parent, id);
+		});
+
+		cp.parse(response.body);
 	});
 }
 
@@ -54,24 +56,130 @@ void report_problem_understanding(std::string const& field, std::string const& v
 	problems.emplace_back(sstr.str());
 }
 
-void scraper::process_category(category const& c)
+void interpret_unit(std::string unit, uint64_t& volume, measure& volume_measure, confidence& conf, scraper::problems_t& problems)
 {
-	if(c.has_children)
-		schedule_submenu(c);
+	static const std::set<std::string> valid_stuks({
+		"st", "stuk", "stuks",
+		"scharreleieren", "tabl", "filterhulzen", "test", "schuursponsen",
+		"verbanden", "tandenstokers", "strips", "bruistabletten",
+		"patches", "tabletten", "condooms", "capsules", "servetten", "paar",
+		"gezichtstissues", "rol", "tissues", "sigaretten", "witte bollen",
+		"haardblok", "vrije uitloop eieren", "braadschotels", "caps", "geurkaarsen",
+		"luiers", "kauwtabletten", "pakjes", "tampons", "blaarpleisters",
+		"rollen", "toiletrollen", "aanstekers", "geurbuiltjes", "slim filters",
+		"theefilters", "inlegkruisjes", "sigaren", "beschuiten", "batterijen",
+		"doekjes", "sigaretten"
+	});
 
-	process_products(c);
+	static const std::set<std::string> invalid_stuks({
+		"wasbeurten", "plakjes", "bos", "bosjes", "porties",
+		"zakjes", "sachets", "kaarten", "lapjes", "zegel", "pakjes"
+	});
+
+	static const boost::regex match_multi("([0-9]+)(?: )?[xX](?: )?(.+)");
+
+	static const boost::regex match_stuks("(?:ca. )?([0-9]+) stuk\\(s\\)");
+	static const boost::regex match_pers("(?:ca. )?([0-9]+(?:-[0-9]+)?) pers\\.");
+
+	static const boost::regex match_measure("(?:ca. )?([0-9]+(?:\\.[0-9]+)?)(?: )?(mg|g|gr|gram|kg|kilo|ml|cl|l|lt|liter|litre|m)(?:\\.)?");
+	boost::smatch what;
+
+	std::replace(unit.begin(), unit.end(), ',', '.');
+
+	uint64_t multiplier = 1;
+	if(boost::regex_match(unit, what, match_multi))
+	{
+		multiplier = boost::lexical_cast<uint64_t>(what[1]);
+		unit = what[2];
+	}
+
+	if(
+		unit == "per stuk" ||
+		unit == "per krop" ||
+		unit == "per bos" ||
+		unit == "per bosje" ||
+		unit == "per doos" ||
+		unit == "per set" ||
+		unit == "éénkops" ||
+		boost::regex_match(unit, what, match_pers)
+	)
+	{
+		// Do nothing
+	}
+	else if(boost::regex_match(unit, what, match_stuks))
+	{
+		if(valid_stuks.find(what[2]) != valid_stuks.end())
+			volume = boost::lexical_cast<float>(what[1]);
+		else if(invalid_stuks.find(what[2]) != invalid_stuks.end())
+		{
+			// Do nothing
+		}
+	}
+	else if(boost::regex_match(unit, what, match_measure))
+	{
+		std::string measure_type = what[2];
+
+		if(measure_type == "mg")
+		{
+			volume = boost::lexical_cast<float>(what[1]);
+			volume_measure = measure::MILLIGRAMS;
+		}
+		else if(measure_type == "g" || measure_type == "gr" || measure_type == "gram")
+		{
+			volume = boost::lexical_cast<float>(what[1])*1000.0f;
+			volume_measure = measure::MILLIGRAMS;
+		}
+		else if(measure_type == "kg" || measure_type == "kilo")
+		{
+			volume = boost::lexical_cast<float>(what[1])*1000000.0f;
+			volume_measure = measure::MILLIGRAMS;
+		}
+		else if(measure_type == "ml")
+		{
+			volume = boost::lexical_cast<float>(what[1]);
+			volume_measure = measure::MILLILITRES;
+		}
+		else if(measure_type == "cl")
+		{
+			volume = boost::lexical_cast<float>(what[1])*100.0f;
+			volume_measure = measure::MILLILITRES;
+		}
+		else if(measure_type == "l" || measure_type == "lt" || measure_type == "liter" || measure_type == "litre")
+		{
+			volume = boost::lexical_cast<float>(what[1])*1000.0f;
+			volume_measure = measure::MILLILITRES;
+		}
+		else if(measure_type == "m")
+		{
+			volume = boost::lexical_cast<float>(what[1])*1000.0f;
+			volume_measure = measure::MILLIMETRES;
+		}
+		else
+		{
+			report_problem_understanding("measure_type", measure_type, problems);
+			conf = confidence::LOW;
+			return;
+		}
+	}
+	else
+	{
+		report_problem_understanding("unit", unit, problems);
+		conf = confidence::LOW;
+	}
+
+	volume *= multiplier;
 }
 
-void scraper::process_products(category const& c)
+void scraper::process_products(category const& c, size_t id)
 {
-	std::string uri("https://api-01.cooponline.nl/shopapi/article/list?offset=0&size=10000&webshopCategoryId=");
-	uri += boost::lexical_cast<std::string>(c.id);
+	std::string uri("https://www.coop.nl/actions/ViewAjax-Start?PageNumber=0&PageSize=100000&TargetPipeline=ViewStandardCatalog-ProductPaging&CatalogID=COOP&CategoryName=");
+	uri += boost::lexical_cast<std::string>(id);
 
 	m.schedule(uri, [=](downloader::response const& response) {
 		page_count++;
 
 		Json::Value root(parse_json(response.body));
-		for(auto const& j : root["articles"])
+		for(auto const& j : root)
 		{
 			std::vector<std::string> problems;
 
@@ -81,118 +189,65 @@ void scraper::process_products(category const& c)
 
 			p.tags.push_back({c.name, std::string("category")});
 
-			p.identifier = j["articleNumber"].asString();
+			p.identifier = j["productSKU"].asString();
 
-			std::string brand = j["brand"]["name"].asString();
-			if(brand == "-------")
-				brand = "coop";
-
-			p.name = j["name"].asString();
-
-			// Coop gives names as uppercase strings, which is undesireable.
-			boost::algorithm::to_lower(brand, std::locale("en_US.utf8")); // TODO fix UTF8-handling with ICU or similar.
-			boost::algorithm::to_lower(p.name, std::locale("en_US.utf8"));
-
-			p.tags.push_back({brand, std::string("brand")});
+			p.name = j["productName"].asString();
 
 			p.valid_on = retrieved_on;
 			p.discount_amount = 1;
 
-			p.price = j["salePrice"].asFloat()*100.0;
-			if(!j["originalPrice"].isNull())
-				p.orig_price = j["originalPrice"].asFloat()*100.0;
-			else
-				p.orig_price = p.price;
-
-			if(j["mixMatched"].asBool())
-			{
-				std::string type = j["mixMatchButtonType"].asString();
-				if(type == "FIXED_PRICE")
-				{
-					p.price = j["mixMatchDiscount"].asFloat()*100.0;
-				}
-				else if(type == "QUANTITY_FIXED_PRICE")
-				{
-					p.discount_amount = j["mixMatchItemQuantity"].asInt();
-					p.price = j["mixMatchDiscount"].asFloat()*100.0 / p.discount_amount;
-				}
-				else if(type == "PERCENT")
-				{
-					p.discount_amount = j["mixMatchItemQuantity"].asInt();
-					p.price *= j["mixMatchDiscount"].asFloat()/100.0;
-				}
-				else if(type == "TWO_BUY_ONE_PAY")
-				{
-					p.discount_amount = j["mixMatchItemQuantity"].asInt();
-					p.price *= j["mixMatchDiscount"].asFloat()/100.0;
-				}
-				else if(type == "" && j["mixMatchDiscount"].isInt() && j["mixMatchDiscount"].asInt() == 100)
-				{
-					// Not actually a discount, bug in Coop's system
-				}
-				else
-				{
-					report_problem_understanding("mixMatchButtonType", type, problems);
-					conf = confidence::LOW;
-				}
+			p.orig_price =
+						boost::lexical_cast<size_t>(j["standardPrice"]["whole"].asString())*100 +
+						boost::lexical_cast<size_t>(j["standardPrice"]["fraction"].asString());
+			if(!j["salePrice"].isNull()) {
+				p.price =
+							boost::lexical_cast<size_t>(j["salePrice"]["whole"].asString())*100 +
+							boost::lexical_cast<size_t>(j["salePrice"]["fraction"].asString());
+			} else {
+				p.price = p.orig_price;
 			}
-
-			const static std::map<std::string, std::pair<uint64_t, measure>> measure_map({
-				{"DOZIJN", {12, measure::UNITS}},
-				{"GROS", {144, measure::UNITS}},
-				{"MILIGRAM", {1, measure::MILLIGRAMS}},
-				{"GRAM", {1000, measure::MILLIGRAMS}},
-				{"HECTOGRM", {100000, measure::MILLIGRAMS}},
-				{"KILOGRAM", {1000000, measure::MILLIGRAMS}},
-				{"TON", {1000000000, measure::MILLIGRAMS}},
-				{"POND", {500000, measure::MILLIGRAMS}},
-				{"ONS", {100000, measure::MILLIGRAMS}},
-				{"MILIMETR", {1, measure::MILLIMETRES}},
-				{"CENTIMTR", {10, measure::MILLIMETRES}},
-				{"DECIMETR", {100, measure::MILLIMETRES}},
-				{"METER", {1000, measure::MILLIMETRES}},
-				{"KILOMETR", {1000000, measure::MILLIMETRES}},
-				{"MILILITR", {1, measure::MILLILITRES}},
-				{"CENTILTR", {10, measure::MILLILITRES}},
-				{"DECILITR", {100, measure::MILLILITRES}},
-				{"LITER", {1000, measure::MILLILITRES}},
-				{"DECALITR", {10000, measure::MILLILITRES}},
-				{"HECTOLTR", {100000, measure::MILLILITRES}},
-				{"STUK", {1, measure::UNITS}},
-				{"Diversen", {1, measure::UNITS}},
-				{"PLAK", {1, measure::UNITS}},
-				{"PUNT(EN)", {1, measure::UNITS}},
-				{"ROL(LEN)", {1, measure::UNITS}}
-			});
 
 			p.volume = 1;
 			p.volume_measure = measure::UNITS;
 
-			std::string volume_str = j["volume"].asString();
-			std::string measure_str = j["volumeMeasure"]["name"].asString();
+			interpret_unit(j["productSubText"].asString(), p.volume, p.volume_measure, conf, problems);
 
-			auto measure_it = measure_map.find(measure_str);
-			if(measure_it != measure_map.end())
-			{
-				try
-				{
-					p.volume = boost::lexical_cast<uint64_t>(volume_str) * measure_it->second.first;
-					p.volume_measure = measure_it->second.second;
-				} catch(boost::bad_lexical_cast e)
-				{
-					report_problem_understanding("volume", volume_str, problems);
-					conf = confidence::LOW;
-				}
-			}
-			else
-			{
-				report_problem_understanding("volumeMeasure", volume_str, problems);
+			static const boost::regex match_percent_discount("([0-9]+)% (?:probeer)?korting");
+			static const boost::regex match_combination_discount("([0-9]+) voor ([0-9]+).([0-9]+)");
+			static const boost::regex match_fixed("nu voor ([0-9]+).([0-9]+)");
+			static const boost::regex match_volume_discount("([0-9]+).([0-9]+) per 100 gram");
+			boost::smatch what;
+
+			std::string sticker = j["productStickerText"].asString();
+			std::transform(sticker.begin(), sticker.end(), sticker.begin(), ::tolower);
+
+			if(sticker == "" || sticker == "actie" || sticker == "per 100 gram") {
+				// Do nothing
+			} else if(boost::regex_match(sticker, what, match_combination_discount)) {
+				p.discount_amount = boost::lexical_cast<uint64_t>(what[1]);
+				p.price = boost::lexical_cast<float>(what[2] + '.' + what[3])*100.0f;
+			} else if(boost::regex_match(sticker, what, match_volume_discount) && p.volume_measure == measure::MILLIGRAMS) {
+				p.price = boost::lexical_cast<float>(what[1] + '.' + what[2])*100.0f * (p.volume / 100000.0f);
+			} else if(boost::regex_match(sticker, what, match_fixed)) {
+				p.price = boost::lexical_cast<float>(what[1] + '.' + what[2])*100.0f;
+			} else if(boost::regex_match(sticker, what, match_percent_discount)) {
+				p.price *= 1.0f - boost::lexical_cast<float>(what[1])/100.0f;
+			} else if(sticker == "1 + 1 gratis") {
+				p.discount_amount = 2;
+				p.price *= 0.5;
+			} else if(sticker == "2 + 1 gratis") {
+				p.discount_amount = 3;
+				p.price *= (3.0 / 2.0);
+			} else {
+
+				report_problem_understanding("productStickerText", sticker, problems);
 				conf = confidence::LOW;
 			}
 
 			boost::optional<std::string> image_uri;
-			if(j["imageId"].isInt())
-				image_uri = "https://api-01.cooponline.nl/shopapi/image/A/N/" + boost::lexical_cast<std::string>(j["imageId"].asUInt());
+			if(j["image540"].isString()) {
+				image_uri = j["image540"].asString();
+			}
 
 			product_count++;
 			product_callback(uri, image_uri, p, retrieved_on, conf, problems);
@@ -206,15 +261,16 @@ void scraper::scrape()
 	page_count = 0;
 	error_count = 0;
 
-	Json::Value root(parse_json(stubborn::attempt<std::string>([&]() {
-		return dl.fetch("https://api-01.cooponline.nl/shopapi/webshopCategory/getMenu").body;
-	})));
+	category_parser cp(
+		[&](category const& c) {
+			schedule_submenu(c);
+		},
+		[](size_t) {}
+	);
 
-	for(auto const& cat : root["rootWebshopCategories"])
-	{
-		category c({cat["id"].asUInt64(), cat["name"].asString(), cat["hasChildren"].asBool()});
-		process_category(c);
-	}
+	cp.parse(stubborn::attempt<std::string>([&]() {
+		return dl.fetch("https://www.coop.nl/boodschappen").body;
+	}));
 
 	m.process_all();
 	std::cerr << "Pages: " << page_count << ", products: " << product_count << ", errors: " << error_count << std::endl;

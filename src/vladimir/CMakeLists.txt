@@ -13,6 +13,7 @@ include_directories(SYSTEM
 add_library(vladimircore scraper.cpp)
 target_link_libraries(vladimircore
 					  supermarx-downloader
+					  supermarx-scraper
 					  ${jsoncpp_LIBRARIES}
 					  ${yaml-cpp_LIBRARIES}
 					  ${Boost_LIBRARIES}) 
